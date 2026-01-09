@@ -1,6 +1,6 @@
 {
   "name": "web-infra",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "bin": {
     "web-infra": "bin/web-infra.js"
   },
