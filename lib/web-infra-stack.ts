@@ -73,51 +73,73 @@ export class WebInfraStack extends cdk.Stack {
 
     // Add UserData for EC2
     const userData = ec2.UserData.forLinux();
+    // Create the deployment script
+    // This script is the "Coordinator" that running on the instance.
+    // It runs as root (initially) but switches to ec2-user for all application logic.
     userData.addCommands(
       'yum update -y',
       'curl -sL https://rpm.nodesource.com/setup_20.x | bash -',
       'yum install -y nodejs git jq',
       'npm install -g pnpm pm2',
-      'mkdir -p /var/www/firenze-api',
 
-      // Create deployment script
+      // Create the script
       'cat << "EOF" > /usr/local/bin/deploy-api',
       '#!/bin/bash',
       'set -e',
       'exec > >(tee /var/log/deploy-api.log) 2>&1',
-      'echo "Starting deployment at $(date)"',
-      '',
-      // export HOME to ensure global npm packages found if needed, though they are in /usr/bin usually
-      'export HOME=/root',
-      '',
-      'TOKEN=$(aws secretsmanager get-secret-value --secret-id github-token --query SecretString --output text --region ' + this.region + ')',
-      'REPO_URL="https://${TOKEN}@github.com/firenzeme/web-api.git"',
-      'TARGET_DIR="/var/www/firenze-api"',
-      '',
-      'if [ ! -d "$TARGET_DIR/.git" ]; then',
-      '  echo "Cloning repository..."',
-      '  git clone "$REPO_URL" "$TARGET_DIR"',
-      'else',
-      '  echo "Pulling latest changes..."',
-      '  cd "$TARGET_DIR"',
-      '  # Update remote url with token in case it changed',
-      '  git remote set-url origin "$REPO_URL"',
-      '  git pull origin main',
-      'fi',
-      '',
-      'cd "$TARGET_DIR"',
-      'chmod +x scripts/deploy-ec2.sh',
-      '',
-      // Set ENVIRONMENT based on stack envName. 
-      // Mapping: prod -> production, everything else -> as is (staging, dev)
-      `export ENVIRONMENT=${envName === 'prod' ? 'production' : envName}`,
+
+      '# Configuration',
+      'APP_DIR="/home/ec2-user/firenze-api"',
       'export AWS_REGION=' + this.region,
-      '',
-      './scripts/deploy-ec2.sh',
+
+      '# Ensure directory exists and permissions are correct',
+      'mkdir -p "$APP_DIR"',
+      'chown ec2-user:ec2-user "$APP_DIR"',
+
+      '# Fetch Token (needs to run as root or user with IAM access - instance role has it)',
+      '# We fetch it here to fail early if missing, but we could also do it inside the su block if we export env vars',
+      'TOKEN=$(aws secretsmanager get-secret-value --secret-id github-token --query SecretString --output text --region ' + this.region + ')',
+
+      '# Run the actual deployment logic as ec2-user',
+      '# We pass the token in via env var to avoid printing it to logs if possible, though here it is expanding',
+      'su - ec2-user -c "set -e',
+      '  export ENVIRONMENT=' + (envName === 'prod' ? 'production' : envName),
+      '  export HOME=/home/ec2-user',
+      '  export AWS_REGION=' + this.region,
+
+      '  REPO_URL=\\"https://${TOKEN}@github.com/firenzeme/web-api.git\\"',
+      '  TARGET_DIR=\\"$APP_DIR\\"',
+
+      '  echo \\"Deploying to $TARGET_DIR in environment $ENVIRONMENT\\"',
+
+      '  if [ ! -d \\"$TARGET_DIR/.git\\" ]; then',
+      '    echo \\"Cloning repository...\\"',
+      '    git clone \\"$REPO_URL\\" \\"$TARGET_DIR\\"',
+      '  else',
+      '    echo \\"Pulling latest changes...\\"',
+      '    cd \\"$TARGET_DIR\\"',
+      '    git remote set-url origin \\"$REPO_URL\\"',
+      '    git pull origin main',
+      '  fi',
+
+      '  cd \\"$TARGET_DIR\\"',
+      '  chmod +x scripts/deploy-ec2.sh',
+
+      '  # Run the repo-provided build script',
+      '  ./scripts/deploy-ec2.sh',
+
+      '  # Ensure persistence',
+      '  pm2 save',
+      '"',
+
+      '# Ensure PM2 starts on boot (running as root to register systemd, but for ec2-user)',
+      'pm2 startup systemd -u ec2-user --hp /home/ec2-user',
+      'pm2 save', // Save again as root just in case, or to ensure systemd picks up current list? actually su ec2-user pm2 save is better
       'EOF',
-      '',
+
       'chmod +x /usr/local/bin/deploy-api',
-      // Run it immediately on first boot
+
+      // Run it immediately on first boot to bootstrap the app
       '/usr/local/bin/deploy-api'
     );
 
