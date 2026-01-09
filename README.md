@@ -4,11 +4,26 @@ This is a blank project for CDK development with TypeScript.
 
 The `cdk.json` file tells the CDK Toolkit how to execute your app.
 
-## Useful commands
+## Deployment
 
-* `npm run build`   compile typescript to js
-* `npm run watch`   watch for changes and compile
-* `npm run test`    perform the jest unit tests
-* `npx cdk deploy`  deploy this stack to your default AWS account/region
-* `npx cdk diff`    compare deployed stack with current state
-* `npx cdk synth`   emits the synthesized CloudFormation template
+### Prerequisites
+1. Ensure the `github-token` secret exists in AWS Secrets Manager (Plaintext PAT).
+2. Configure AWS credentials (`aws configure`).
+
+### Deploying the Production Environment
+```bash
+npx cdk deploy -c env=prod
+```
+This will:
+- Use SSM parameters from `/firenze/prod/*`
+- Create `prod.firenzegroup.co` (Webapp)
+- Create `prod-api.firenzegroup.co` (API)
+
+### Deploying Additional Environments (e.g., Staging)
+```bash
+npx cdk deploy -c env=staging
+```
+This will:
+- Use SSM parameters from `/firenze/staging/*`
+- Create `staging.firenzegroup.co` (Webapp)
+- Create `staging-api.firenzegroup.co` (API)
