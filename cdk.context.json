@@ -1,0 +1,11 @@
+{
+  "availability-zones:account=970547365389:region=eu-west-2": [
+    "eu-west-2a",
+    "eu-west-2b",
+    "eu-west-2c"
+  ],
+  "hosted-zone:account=970547365389:domainName=firenzegroup.co:region=eu-west-2": {
+    "Id": "/hostedzone/Z08063081E98UXNO4POTG",
+    "Name": "firenzegroup.co."
+  }
+}

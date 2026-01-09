@@ -51,6 +51,15 @@ export class WebInfraStack extends cdk.Stack {
       ],
     }));
 
+    // Grant access to GitHub token for git operations
+    apiRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['secretsmanager:GetSecretValue'],
+      resources: [
+        `arn:aws:secretsmanager:${this.region}:${this.account}:secret:github-token-*`,
+      ],
+    }));
+
     // 3. EC2 Instance for web-api
     const apiSecurityGroup = new ec2.SecurityGroup(this, `WebApiSG-${envName}`, {
       vpc,
@@ -67,11 +76,49 @@ export class WebInfraStack extends cdk.Stack {
     userData.addCommands(
       'yum update -y',
       'curl -sL https://rpm.nodesource.com/setup_20.x | bash -',
-      'yum install -y nodejs git',
+      'yum install -y nodejs git jq',
       'npm install -g pnpm pm2',
       'mkdir -p /var/www/firenze-api',
-      'cd /var/www/firenze-api',
-      'echo "EC2 Initialized" > /var/tmp/init.log'
+
+      // Create deployment script
+      'cat << "EOF" > /usr/local/bin/deploy-api',
+      '#!/bin/bash',
+      'set -e',
+      'exec > >(tee /var/log/deploy-api.log) 2>&1',
+      'echo "Starting deployment at $(date)"',
+      '',
+      // export HOME to ensure global npm packages found if needed, though they are in /usr/bin usually
+      'export HOME=/root',
+      '',
+      'TOKEN=$(aws secretsmanager get-secret-value --secret-id github-token --query SecretString --output text --region ' + this.region + ')',
+      'REPO_URL="https://${TOKEN}@github.com/firenzeme/web-api.git"',
+      'TARGET_DIR="/var/www/firenze-api"',
+      '',
+      'if [ ! -d "$TARGET_DIR/.git" ]; then',
+      '  echo "Cloning repository..."',
+      '  git clone "$REPO_URL" "$TARGET_DIR"',
+      'else',
+      '  echo "Pulling latest changes..."',
+      '  cd "$TARGET_DIR"',
+      '  # Update remote url with token in case it changed',
+      '  git remote set-url origin "$REPO_URL"',
+      '  git pull origin main',
+      'fi',
+      '',
+      'cd "$TARGET_DIR"',
+      'chmod +x scripts/deploy-ec2.sh',
+      '',
+      // Set ENVIRONMENT based on stack envName. 
+      // Mapping: prod -> production, everything else -> as is (staging, dev)
+      `export ENVIRONMENT=${envName === 'prod' ? 'production' : envName}`,
+      'export AWS_REGION=' + this.region,
+      '',
+      './scripts/deploy-ec2.sh',
+      'EOF',
+      '',
+      'chmod +x /usr/local/bin/deploy-api',
+      // Run it immediately on first boot
+      '/usr/local/bin/deploy-api'
     );
 
     const apiInstance = new ec2.Instance(this, `WebApiInstance-${envName}`, {
@@ -120,7 +167,7 @@ export class WebInfraStack extends cdk.Stack {
     const zone = route53.HostedZone.fromLookup(this, `Zone-${envName}`, { domainName });
 
     // Webapp Domain Association
-    new amplify.CfnDomain(this, `AmplifyDomain-${envName}`, {
+    const amplifyDomain = new amplify.CfnDomain(this, `AmplifyDomain-${envName}`, {
       appId: amplifyApp.attrAppId,
       domainName: `${envName}.${domainName}`,
       subDomainSettings: [
@@ -130,6 +177,7 @@ export class WebInfraStack extends cdk.Stack {
         },
       ],
     });
+    amplifyDomain.addDependency(amplifyBranch);
 
     // API DNS Record
     new route53.ARecord(this, `ApiAliasRecord-${envName}`, {
