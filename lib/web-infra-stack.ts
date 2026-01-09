@@ -123,6 +123,7 @@ export class WebInfraStack extends cdk.Stack {
 
     const apiInstance = new ec2.Instance(this, `WebApiInstance-${envName}`, {
       vpc,
+      instanceName: `WebApiInstance-${envName}`, // Explicit name to make it easier to find in CI/CD
       instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.SMALL),
       machineImage: ec2.MachineImage.latestAmazonLinux2023(),
       role: apiRole,
