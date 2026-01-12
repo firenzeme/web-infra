@@ -222,6 +222,7 @@ export class WebInfraStack extends cdk.Stack {
         { source: '/images/<*>', target: '/images/<*>', status: '200' },
         { source: '/videos/<*>', target: '/videos/<*>', status: '200' },
         { source: '/.well-known/<*>', target: '/.well-known/<*>', status: '200' },
+        { source: '/cognito-config.json', target: '/cognito-config.json', status: '200' },
         { source: '/favicon.ico', target: '/favicon.ico', status: '200' },
         { source: '/robots.txt', target: '/robots.txt', status: '200' },
         // SPA fallback - catch-all must be last
