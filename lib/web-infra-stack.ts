@@ -18,6 +18,20 @@ export class WebInfraStack extends cdk.Stack {
 
     const { envName } = props;
 
+    const envConfig = {
+      prod: {
+        instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.SMALL),
+        apiCertificateArn: 'arn:aws:acm:eu-west-2:970547365389:certificate/03201aca-2a46-43f2-bc4d-ffdc09bfa3ef',
+      },
+      dev: {
+        instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.NANO),
+        apiCertificateArn: 'arn:aws:acm:eu-west-2:970547365389:certificate/72b645e1-3813-41bd-bbe3-f6a2d6d04d4b',
+      },
+    }[envName as 'prod' | 'dev'] || {
+      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.NANO),
+      apiCertificateArn: undefined,
+    };
+
     // 1. VPC & Networking - Import existing VPC where ALB lives
     const vpc = ec2.Vpc.fromLookup(this, `FirenzeVpc-${envName}`, {
       vpcId: 'vpc-0b3948289cdc1f69a',
@@ -134,7 +148,7 @@ export class WebInfraStack extends cdk.Stack {
     const apiInstance = new ec2.Instance(this, `WebApiInstanceV3-${envName}`, {
       vpc,
       instanceName: `WebApiInstance-${envName}`, // Explicit name to make it easier to find in CI/CD
-      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.SMALL),
+      instanceType: envConfig.instanceType,
       machineImage: ec2.MachineImage.latestAmazonLinux2023(),
       role: apiRole,
       securityGroup: apiSecurityGroup,
@@ -163,6 +177,17 @@ export class WebInfraStack extends cdk.Stack {
       },
       targets: [new elbv2_targets.InstanceTarget(apiInstance, 3001)],
     });
+
+    // 3. ALB Support (Listener Certificate)
+    if (envConfig.apiCertificateArn) {
+      new elbv2.ApplicationListenerCertificate(this, `ApiCertAssociation-${envName}`, {
+        listener: elbv2.ApplicationListener.fromLookup(this, 'SharedHttpsListener', {
+          loadBalancerArn: 'arn:aws:elasticloadbalancing:eu-west-2:970547365389:loadbalancer/app/firenze-webapi-lb/2247a915d05f217e',
+          listenerPort: 443,
+        }),
+        certificates: [elbv2.ListenerCertificate.fromArn(envConfig.apiCertificateArn)],
+      });
+    }
 
     // Add listener rule using CfnListenerRule (low-level construct to avoid lookup)
     const httpsListenerArn = 'arn:aws:elasticloadbalancing:eu-west-2:970547365389:listener/app/firenze-webapi-lb/2247a915d05f217e/4d18e5818f2b8930';

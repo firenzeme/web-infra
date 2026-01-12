@@ -7,5 +7,60 @@
   "hosted-zone:account=970547365389:domainName=firenzegroup.co:region=eu-west-2": {
     "Id": "/hostedzone/Z08063081E98UXNO4POTG",
     "Name": "firenzegroup.co."
+  },
+  "vpc-provider:account=970547365389:filter.vpc-id=vpc-0b3948289cdc1f69a:region=eu-west-2:returnAsymmetricSubnets=true": {
+    "vpcId": "vpc-0b3948289cdc1f69a",
+    "vpcCidrBlock": "172.31.0.0/16",
+    "ownerAccountId": "970547365389",
+    "availabilityZones": [],
+    "subnetGroups": [
+      {
+        "name": "Public",
+        "type": "Public",
+        "subnets": [
+          {
+            "subnetId": "subnet-01102dc652fd8df0c",
+            "cidr": "172.31.16.0/20",
+            "availabilityZone": "eu-west-2a",
+            "routeTableId": "rtb-06c9c6dd5aa9963be"
+          },
+          {
+            "subnetId": "subnet-0c122a813fc674471",
+            "cidr": "172.31.32.0/20",
+            "availabilityZone": "eu-west-2b",
+            "routeTableId": "rtb-06c9c6dd5aa9963be"
+          },
+          {
+            "subnetId": "subnet-0f6dc8668ac1e0baa",
+            "cidr": "172.31.0.0/20",
+            "availabilityZone": "eu-west-2c",
+            "routeTableId": "rtb-06c9c6dd5aa9963be"
+          }
+        ]
+      },
+      {
+        "name": "Private",
+        "type": "Private",
+        "subnets": [
+          {
+            "subnetId": "subnet-0f3d0c94f08f5808e",
+            "cidr": "172.31.48.0/24",
+            "availabilityZone": "eu-west-2a",
+            "routeTableId": "rtb-044c99926db3ac350"
+          }
+        ]
+      }
+    ]
+  },
+  "load-balancer-listener:account=970547365389:listenerPort=443:loadBalancerArn=arn$:aws$:elasticloadbalancing$:eu-west-2$:970547365389$:loadbalancer/app/firenze-webapi-lb/2247a915d05f217e:loadBalancerType=application:region=eu-west-2": {
+    "listenerArn": "arn:aws:elasticloadbalancing:eu-west-2:970547365389:listener/app/firenze-webapi-lb/2247a915d05f217e/4d18e5818f2b8930",
+    "listenerPort": 443,
+    "securityGroupIds": [
+      "sg-0cba65ccaaa5cd467"
+    ]
+  },
+  "security-group:account=970547365389:region=eu-west-2:securityGroupId=sg-0cba65ccaaa5cd467": {
+    "securityGroupId": "sg-0cba65ccaaa5cd467",
+    "allowAllOutbound": false
   }
 }
