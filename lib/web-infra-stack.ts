@@ -73,6 +73,7 @@ export class WebInfraStack extends cdk.Stack {
     apiSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'Allow HTTP');
     apiSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Allow HTTPS');
     apiSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(3001), 'Allow API Port');
+    apiSecurityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(22), 'Allow SSH');
 
     // Add UserData for EC2
     const userData = ec2.UserData.forLinux();
@@ -153,7 +154,25 @@ export class WebInfraStack extends cdk.Stack {
       role: apiRole,
       securityGroup: apiSecurityGroup,
       vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
+      keyName: 'firenze-api-key',
       userData,
+    });
+
+    // Elastic IP for stable SSH access
+    const eip = new ec2.CfnEIP(this, `WebApiEIP-${envName}`, {
+      domain: 'vpc',
+      tags: [{ key: 'Name', value: `WebApiEIP-${envName}` }],
+    });
+
+    new ec2.CfnEIPAssociation(this, `WebApiEIPAssoc-${envName}`, {
+      eip: eip.ref,
+      instanceId: apiInstance.instanceId,
+    });
+
+    // Output the Elastic IP for SSH config
+    new cdk.CfnOutput(this, `WebApiElasticIP-${envName}`, {
+      value: eip.ref,
+      description: `Elastic IP for WebApiInstance-${envName}`,
     });
 
     // 4. ALB Integration - Create target group and listener rule
