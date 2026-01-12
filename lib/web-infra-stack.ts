@@ -5,6 +5,8 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as amplify from 'aws-cdk-lib/aws-amplify';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as targets from 'aws-cdk-lib/aws-route53-targets';
+import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
+import * as elbv2_targets from 'aws-cdk-lib/aws-elasticloadbalancingv2-targets';
 
 interface WebInfraStackProps extends cdk.StackProps {
   envName: string;
@@ -16,22 +18,9 @@ export class WebInfraStack extends cdk.Stack {
 
     const { envName } = props;
 
-    // 1. VPC & Networking
-    const vpc = new ec2.Vpc(this, `FirenzeVpc-${envName}`, {
-      maxAzs: 2,
-      natGateways: 1,
-      subnetConfiguration: [
-        {
-          cidrMask: 24,
-          name: 'Public',
-          subnetType: ec2.SubnetType.PUBLIC,
-        },
-        {
-          cidrMask: 24,
-          name: 'Private',
-          subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
-        },
-      ],
+    // 1. VPC & Networking - Import existing VPC where ALB lives
+    const vpc = ec2.Vpc.fromLookup(this, `FirenzeVpc-${envName}`, {
+      vpcId: 'vpc-0b3948289cdc1f69a',
     });
 
     // 2. IAM Role for EC2 (web-api)
@@ -153,6 +142,50 @@ export class WebInfraStack extends cdk.Stack {
       userData,
     });
 
+    // 4. ALB Integration - Create target group and listener rule
+    // ALB details for reference:
+    const albArn = 'arn:aws:elasticloadbalancing:eu-west-2:970547365389:loadbalancer/app/firenze-webapi-lb/2247a915d05f217e';
+    const albDnsName = 'firenze-webapi-lb-1903631309.eu-west-2.elb.amazonaws.com';
+
+    // Create target group for this environment
+    const targetGroup = new elbv2.ApplicationTargetGroup(this, `ApiTargetGroup-${envName}`, {
+      vpc,
+      targetGroupName: `webapi-${envName}`,
+      port: 3001,
+      protocol: elbv2.ApplicationProtocol.HTTP,
+      targetType: elbv2.TargetType.INSTANCE,
+      healthCheck: {
+        path: '/health',
+        healthyThresholdCount: 2,
+        unhealthyThresholdCount: 3,
+        interval: cdk.Duration.seconds(30),
+        timeout: cdk.Duration.seconds(5),
+      },
+      targets: [new elbv2_targets.InstanceTarget(apiInstance, 3001)],
+    });
+
+    // Add listener rule using CfnListenerRule (low-level construct to avoid lookup)
+    const httpsListenerArn = 'arn:aws:elasticloadbalancing:eu-west-2:970547365389:listener/app/firenze-webapi-lb/2247a915d05f217e/4d18e5818f2b8930';
+
+    new elbv2.CfnListenerRule(this, `ApiListenerRule-${envName}`, {
+      listenerArn: httpsListenerArn,
+      priority: envName === 'prod' ? 10 : 20,
+      conditions: [
+        {
+          field: 'host-header',
+          hostHeaderConfig: {
+            values: [`api.${envName}.firenzegroup.co`],
+          },
+        },
+      ],
+      actions: [
+        {
+          type: 'forward',
+          targetGroupArn: targetGroup.targetGroupArn,
+        },
+      ],
+    });
+
     // 4. Amplify App for webapp
     const amplifyRole = new iam.Role(this, `AmplifyRole-${envName}`, {
       assumedBy: new iam.ServicePrincipal('amplify.amazonaws.com'),
@@ -219,11 +252,11 @@ export class WebInfraStack extends cdk.Stack {
     });
     amplifyDomain.addDependency(amplifyBranch);
 
-    // API DNS Record
-    new route53.ARecord(this, `ApiAliasRecord-${envName}`, {
+    // API DNS Record - CNAME pointing to ALB
+    new route53.CnameRecord(this, `ApiCnameRecord-${envName}`, {
       zone,
-      recordName: `${envName}-api.${domainName}`,
-      target: route53.RecordTarget.fromIpAddresses(apiInstance.instancePublicIp),
+      recordName: `api.${envName}`, // Creates api.prod.firenzegroup.co or api.dev.firenzegroup.co
+      domainName: albDnsName,
     });
   }
 }
