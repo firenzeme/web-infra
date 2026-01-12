@@ -240,20 +240,18 @@ export class WebInfraStack extends cdk.Stack {
     const domainName = 'firenzegroup.co';
     const zone = route53.HostedZone.fromLookup(this, `Zone-${envName}`, { domainName });
 
-    // Webapp Domain Association - Only for prod for now as dev is failing cert verification
-    if (envName === 'prod') {
-      const amplifyDomain = new amplify.CfnDomain(this, `AmplifyDomain-${envName}`, {
-        appId: amplifyApp.attrAppId,
-        domainName: `${envName}.${domainName}`,
-        subDomainSettings: [
-          {
-            branchName: amplifyBranch.branchName,
-            prefix: '', // This makes it {envName}.firenzegroup.co
-          },
-        ],
-      });
-      amplifyDomain.addDependency(amplifyBranch);
-    }
+    // Webapp Domain Association
+    const amplifyDomain = new amplify.CfnDomain(this, `AmplifyDomain-${envName}`, {
+      appId: amplifyApp.attrAppId,
+      domainName: `${envName}.${domainName}`,
+      subDomainSettings: [
+        {
+          branchName: amplifyBranch.branchName,
+          prefix: '', // This makes it {envName}.firenzegroup.co
+        },
+      ],
+    });
+    amplifyDomain.addDependency(amplifyBranch);
 
     // API DNS Record - CNAME pointing to ALB
     new route53.CnameRecord(this, `ApiCnameRecord-${envName}`, {
