@@ -96,33 +96,31 @@ export class WebInfraStack extends cdk.Stack {
       'mkdir -p "$APP_DIR"',
       'chown ec2-user:ec2-user "$APP_DIR"',
 
-      '# Fetch Token (needs to run as root or user with IAM access - instance role has it)',
-      '# We fetch it here to fail early if missing, but we could also do it inside the su block if we export env vars',
-      'TOKEN=$(aws secretsmanager get-secret-value --secret-id github-token --query SecretString --output text --region ' + this.region + ')',
-
       '# Run the actual deployment logic as ec2-user',
-      '# We pass the token in via env var to avoid printing it to logs if possible, though here it is expanding',
       'su - ec2-user -c "set -e',
       '  export ENVIRONMENT=' + (envName === 'prod' ? 'production' : envName),
       '  export HOME=/home/ec2-user',
       '  export AWS_REGION=' + this.region,
 
-      '  REPO_URL=\\"https://${TOKEN}@github.com/firenzeme/web-api.git\\"',
-      '  TARGET_DIR=\\"$APP_DIR\\"',
+      '  # Fetch Token (running as ec2-user, leveraging Instance Profile)',
+      '  TOKEN=\\$(aws secretsmanager get-secret-value --secret-id github-token --query SecretString --output text --region ' + this.region + ')',
 
-      '  echo \\"Deploying to $TARGET_DIR in environment $ENVIRONMENT\\"',
+      '  REPO_URL=\\"https://\\${TOKEN}@github.com/firenzeme/web-api.git\\"',
+      '  TARGET_DIR=\\"/home/ec2-user/firenze-api\\"',
 
-      '  if [ ! -d \\"$TARGET_DIR/.git\\" ]; then',
+      '  echo \\"Deploying to \\$TARGET_DIR in environment \\$ENVIRONMENT\\"',
+
+      '  if [ ! -d \\"\\$TARGET_DIR/.git\\" ]; then',
       '    echo \\"Cloning repository...\\"',
-      '    git clone \\"$REPO_URL\\" \\"$TARGET_DIR\\"',
+      '    git clone \\"\\$REPO_URL\\" \\"\\$TARGET_DIR\\"',
       '  else',
       '    echo \\"Pulling latest changes...\\"',
-      '    cd \\"$TARGET_DIR\\"',
-      '    git remote set-url origin \\"$REPO_URL\\"',
+      '    cd \\"\\$TARGET_DIR\\"',
+      '    git remote set-url origin \\"\\$REPO_URL\\"',
       '    git pull origin main',
       '  fi',
 
-      '  cd \\"$TARGET_DIR\\"',
+      '  cd \\"\\$TARGET_DIR\\"',
       '  chmod +x scripts/deploy-ec2.sh',
 
       '  # Run the repo-provided build script',
@@ -134,7 +132,7 @@ export class WebInfraStack extends cdk.Stack {
 
       '# Ensure PM2 starts on boot (running as root to register systemd, but for ec2-user)',
       'pm2 startup systemd -u ec2-user --hp /home/ec2-user',
-      'pm2 save', // Save again as root just in case, or to ensure systemd picks up current list? actually su ec2-user pm2 save is better
+      'pm2 save',
       'EOF',
 
       'chmod +x /usr/local/bin/deploy-api',
@@ -143,7 +141,8 @@ export class WebInfraStack extends cdk.Stack {
       '/usr/local/bin/deploy-api'
     );
 
-    const apiInstance = new ec2.Instance(this, `WebApiInstance-${envName}`, {
+    // We rename to V3 to force replacement of the broken dev instance (since we lack Terminate permissions)
+    const apiInstance = new ec2.Instance(this, `WebApiInstanceV3-${envName}`, {
       vpc,
       instanceName: `WebApiInstance-${envName}`, // Explicit name to make it easier to find in CI/CD
       instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.SMALL),
@@ -155,27 +154,45 @@ export class WebInfraStack extends cdk.Stack {
     });
 
     // 4. Amplify App for webapp
+    const amplifyRole = new iam.Role(this, `AmplifyRole-${envName}`, {
+      assumedBy: new iam.ServicePrincipal('amplify.amazonaws.com'),
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName('AdministratorAccess-Amplify'),
+      ],
+    });
+
+    // Grant SSM permissions for Envilder
+    amplifyRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['ssm:GetParameter', 'ssm:GetParameters', 'ssm:GetParametersByPath'],
+      resources: [
+        `arn:aws:ssm:${this.region}:${this.account}:parameter/firenze/${envName}/webapp/*`,
+        // We also need access to shared params if any
+        `arn:aws:ssm:${this.region}:${this.account}:parameter/firenze/${envName}/api/*`,
+      ],
+    }));
+
     const amplifyApp = new amplify.CfnApp(this, `FirenzeWebapp-${envName}`, {
       name: `firenze-webapp-${envName}`,
       repository: 'https://github.com/firenzeme/webapp',
       accessToken: cdk.SecretValue.secretsManager('github-token').unsafeUnwrap(),
-      iamServiceRole: new iam.Role(this, `AmplifyRole-${envName}`, {
-        assumedBy: new iam.ServicePrincipal('amplify.amazonaws.com'),
-        managedPolicies: [
-          iam.ManagedPolicy.fromAwsManagedPolicyName('AdministratorAccess-Amplify'),
-        ],
-      }).roleArn,
+      iamServiceRole: amplifyRole.roleArn,
       environmentVariables: [
         { name: 'NODE_ENV', value: envName === 'prod' ? 'production' : envName },
-        { name: 'AMPLIFY_MONOREPO_APP_ROOT', value: 'webapp' },
         { name: 'NODE_VERSION', value: '20' },
+        { name: 'ENVILDER_MAP', value: envName === 'prod' ? 'envilder.prod.json' : 'envilder.dev.json' },
+        { name: 'ENVFILE', value: '.env' },
       ],
       customRules: [
-        {
-          source: '/<*>',
-          target: '/index.html',
-          status: '200',
-        },
+        // Static assets - must come BEFORE the SPA fallback
+        { source: '/assets/<*>', target: '/assets/<*>', status: '200' },
+        { source: '/images/<*>', target: '/images/<*>', status: '200' },
+        { source: '/videos/<*>', target: '/videos/<*>', status: '200' },
+        { source: '/.well-known/<*>', target: '/.well-known/<*>', status: '200' },
+        { source: '/favicon.ico', target: '/favicon.ico', status: '200' },
+        { source: '/robots.txt', target: '/robots.txt', status: '200' },
+        // SPA fallback - catch-all must be last
+        { source: '/<*>', target: '/index.html', status: '200' },
       ],
     });
 
