@@ -215,6 +215,7 @@ export class WebInfraStack extends cdk.Stack {
         { name: 'NODE_VERSION', value: '20' },
         { name: 'ENVILDER_MAP', value: envName === 'prod' ? 'envilder.prod.json' : 'envilder.dev.json' },
         { name: 'ENVFILE', value: '.env' },
+        { name: 'AMPLIFY_SKIP_APP_ID_MISMATCH_CHECK', value: 'true' },
       ],
       customRules: [
         // Static assets - must come BEFORE the SPA fallback
