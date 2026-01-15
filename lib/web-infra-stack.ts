@@ -254,6 +254,12 @@ export class WebInfraStack extends cdk.Stack {
       repository: 'https://github.com/firenzeme/webapp',
       accessToken: cdk.SecretValue.secretsManager('github-token').unsafeUnwrap(),
       iamServiceRole: amplifyRole.roleArn,
+      // Basic Auth: prod/firenze for prod, dev/firenze for dev
+      basicAuthConfig: {
+        enableBasicAuth: true,
+        username: envName,
+        password: 'firenze',
+      },
       environmentVariables: [
         { name: 'NODE_ENV', value: envName === 'prod' ? 'production' : envName },
         { name: 'NODE_VERSION', value: '20' },
