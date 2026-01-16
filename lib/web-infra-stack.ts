@@ -20,15 +20,15 @@ export class WebInfraStack extends cdk.Stack {
 
     const envConfig = {
       prod: {
-        instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.SMALL),
+        instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.MEDIUM),
         apiCertificateArn: 'arn:aws:acm:eu-west-2:970547365389:certificate/03201aca-2a46-43f2-bc4d-ffdc09bfa3ef',
       },
       dev: {
-        instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.NANO),
+        instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.MEDIUM),
         apiCertificateArn: 'arn:aws:acm:eu-west-2:970547365389:certificate/72b645e1-3813-41bd-bbe3-f6a2d6d04d4b',
       },
     }[envName as 'prod' | 'dev'] || {
-      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.NANO),
+      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.MEDIUM),
       apiCertificateArn: undefined,
     };
 
@@ -81,6 +81,13 @@ export class WebInfraStack extends cdk.Stack {
     // This script is the "Coordinator" that running on the instance.
     // It runs as root (initially) but switches to ec2-user for all application logic.
     userData.addCommands(
+      // Setup swap space (2GB)
+      'dd if=/dev/zero of=/swapfile bs=128M count=16',
+      'chmod 600 /swapfile',
+      'mkswap /swapfile',
+      'swapon /swapfile',
+      'echo "/swapfile swap swap defaults 0 0" >> /etc/fstab',
+
       'yum update -y',
       'curl -sL https://rpm.nodesource.com/setup_20.x | bash -',
       'yum install -y nodejs git jq',
@@ -145,8 +152,8 @@ export class WebInfraStack extends cdk.Stack {
       '/usr/local/bin/deploy-api'
     );
 
-    // We rename to V3 to force replacement of the broken dev instance (since we lack Terminate permissions)
-    const apiInstance = new ec2.Instance(this, `WebApiInstanceV3-${envName}`, {
+    // We rename to V4 to force replacement of the broken dev instance (since we lack Terminate permissions)
+    const apiInstance = new ec2.Instance(this, `WebApiInstanceV4-${envName}`, {
       vpc,
       instanceName: `WebApiInstance-${envName}`, // Explicit name to make it easier to find in CI/CD
       instanceType: envConfig.instanceType,
