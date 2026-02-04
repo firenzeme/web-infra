@@ -115,10 +115,10 @@ export class WebInfraStack extends cdk.Stack {
 
       '# Run the actual deployment logic as ec2-user',
       'su - ec2-user -c "set -e',
+      '  BRANCH=\"$BRANCH\"',
       '  export ENVIRONMENT=' + (envName === 'prod' ? 'production' : envName),
       '  export HOME=/home/ec2-user',
       '  export AWS_REGION=' + this.region,
-      '  BRANCH=' + (envName === 'prod' ? '\\${1:-main}' : '\\${1:-dev}'),
 
       '  # Fetch Token (running as ec2-user, leveraging Instance Profile)',
       '  TOKEN=\\$(aws secretsmanager get-secret-value --secret-id github-token --query SecretString --output text --region ' + this.region + ')',
@@ -132,12 +132,11 @@ export class WebInfraStack extends cdk.Stack {
       '    echo \\"Cloning repository (branch: \\$BRANCH)...\\"',
       '    git clone -b \\"\\$BRANCH\\" \\"\\$REPO_URL\\" \\"\\$TARGET_DIR\\"',
       '  else',
-      '    echo \\"Pulling latest changes from \\$BRANCH...\\"',
+      '    echo \\"Fetching and resetting to origin/\\$BRANCH...\\"',
       '    cd \\"\\$TARGET_DIR\\"',
       '    git remote set-url origin \\"\\$REPO_URL\\"',
-      '    git fetch origin',
-      '    git checkout \\"\\$BRANCH\\"',
-      '    git pull origin \\"\\$BRANCH\\"',
+      '    git fetch origin \\"\\$BRANCH\\"',
+      '    git reset --hard \\"origin/\\$BRANCH\\"',
       '  fi',
 
       '  cd \\"\\$TARGET_DIR\\"',
@@ -148,7 +147,7 @@ export class WebInfraStack extends cdk.Stack {
 
       '  # Ensure persistence',
       '  pm2 save',
-      '" "$BRANCH"',
+      '"',
 
       '# Ensure PM2 starts on boot (running as root to register systemd, but for ec2-user)',
       'pm2 startup systemd -u ec2-user --hp /home/ec2-user',
