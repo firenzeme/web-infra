@@ -10,11 +10,11 @@ import * as iam from 'aws-cdk-lib/aws-iam';
  * - domainId: from user's custom:domainId attribute (for multi-tenant isolation)
  */
 const PRE_TOKEN_GENERATION_CODE = `
-export const handler = async (event) => {
+exports.handler = async (event) => {
   console.log('Pre Token Generation Event:', JSON.stringify(event, null, 2));
 
   // Get the domainId from user attributes, default to null if not present
-  const domainId = event.request.userAttributes?.['custom:domainId'] || null;
+  const domainId = event.request.userAttributes['custom:domainId'] || null;
 
   // V3 Trigger - supports both user and machine identities
   event.response = {
