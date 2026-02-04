@@ -160,8 +160,8 @@ export class WebInfraStack extends cdk.Stack {
       '/usr/local/bin/deploy-api'
     );
 
-    // We rename to V4 to force replacement of the broken dev instance (since we lack Terminate permissions)
-    const apiInstance = new ec2.Instance(this, `WebApiInstanceV4-${envName}`, {
+    // V5: Force replacement to fix deploy script branch variable passing
+    const apiInstance = new ec2.Instance(this, `WebApiInstanceV5-${envName}`, {
       vpc,
       instanceName: `WebApiInstance-${envName}`, // Explicit name to make it easier to find in CI/CD
       instanceType: envConfig.instanceType,
