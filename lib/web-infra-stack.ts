@@ -94,6 +94,8 @@ export class WebInfraStack extends cdk.Stack {
       'npm install -g pnpm pm2',
 
       // Create the script
+      // The script accepts a branch argument (defaults based on environment)
+      // Usage: /usr/local/bin/deploy-api [branch]
       'cat << "EOF" > /usr/local/bin/deploy-api',
       '#!/bin/bash',
       'set -e',
@@ -101,7 +103,11 @@ export class WebInfraStack extends cdk.Stack {
 
       '# Configuration',
       'APP_DIR="/home/ec2-user/firenze-api"',
+      'DEFAULT_BRANCH=' + (envName === 'prod' ? 'main' : 'dev'),
+      'BRANCH="${1:-$DEFAULT_BRANCH}"',
       'export AWS_REGION=' + this.region,
+
+      'echo "Deploy script called with branch: $BRANCH (default: $DEFAULT_BRANCH)"',
 
       '# Ensure directory exists and permissions are correct',
       'mkdir -p "$APP_DIR"',
@@ -109,6 +115,7 @@ export class WebInfraStack extends cdk.Stack {
 
       '# Run the actual deployment logic as ec2-user',
       'su - ec2-user -c "set -e',
+      '  BRANCH=\"$BRANCH\"',
       '  export ENVIRONMENT=' + (envName === 'prod' ? 'production' : envName),
       '  export HOME=/home/ec2-user',
       '  export AWS_REGION=' + this.region,
@@ -119,16 +126,17 @@ export class WebInfraStack extends cdk.Stack {
       '  REPO_URL=\\"https://\\${TOKEN}@github.com/firenzeme/web-api.git\\"',
       '  TARGET_DIR=\\"/home/ec2-user/firenze-api\\"',
 
-      '  echo \\"Deploying to \\$TARGET_DIR in environment \\$ENVIRONMENT\\"',
+      '  echo \\"Deploying branch \\$BRANCH to \\$TARGET_DIR in environment \\$ENVIRONMENT\\"',
 
       '  if [ ! -d \\"\\$TARGET_DIR/.git\\" ]; then',
-      '    echo \\"Cloning repository...\\"',
-      '    git clone \\"\\$REPO_URL\\" \\"\\$TARGET_DIR\\"',
+      '    echo \\"Cloning repository (branch: \\$BRANCH)...\\"',
+      '    git clone -b \\"\\$BRANCH\\" \\"\\$REPO_URL\\" \\"\\$TARGET_DIR\\"',
       '  else',
-      '    echo \\"Pulling latest changes...\\"',
+      '    echo \\"Fetching and resetting to origin/\\$BRANCH...\\"',
       '    cd \\"\\$TARGET_DIR\\"',
       '    git remote set-url origin \\"\\$REPO_URL\\"',
-      '    git pull origin main',
+      '    git fetch origin \\"\\$BRANCH\\"',
+      '    git reset --hard \\"origin/\\$BRANCH\\"',
       '  fi',
 
       '  cd \\"\\$TARGET_DIR\\"',
@@ -148,12 +156,12 @@ export class WebInfraStack extends cdk.Stack {
 
       'chmod +x /usr/local/bin/deploy-api',
 
-      // Run it immediately on first boot to bootstrap the app
+      // Run it immediately on first boot to bootstrap the app (uses default branch for environment)
       '/usr/local/bin/deploy-api'
     );
 
-    // We rename to V4 to force replacement of the broken dev instance (since we lack Terminate permissions)
-    const apiInstance = new ec2.Instance(this, `WebApiInstanceV4-${envName}`, {
+    // V5: Force replacement to fix deploy script branch variable passing
+    const apiInstance = new ec2.Instance(this, `WebApiInstanceV5-${envName}`, {
       vpc,
       instanceName: `WebApiInstance-${envName}`, // Explicit name to make it easier to find in CI/CD
       instanceType: envConfig.instanceType,
