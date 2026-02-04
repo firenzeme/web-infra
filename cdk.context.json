@@ -62,5 +62,9 @@
   "security-group:account=970547365389:region=eu-west-2:securityGroupId=sg-0cba65ccaaa5cd467": {
     "securityGroupId": "sg-0cba65ccaaa5cd467",
     "allowAllOutbound": false
+  },
+  "hosted-zone:account=970547365389:domainName=firenzegroup.co:region=us-west-2": {
+    "Id": "/hostedzone/Z08063081E98UXNO4POTG",
+    "Name": "firenzegroup.co."
   }
 }

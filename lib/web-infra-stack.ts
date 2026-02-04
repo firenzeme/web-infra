@@ -94,6 +94,8 @@ export class WebInfraStack extends cdk.Stack {
       'npm install -g pnpm pm2',
 
       // Create the script
+      // The script accepts a branch argument (defaults based on environment)
+      // Usage: /usr/local/bin/deploy-api [branch]
       'cat << "EOF" > /usr/local/bin/deploy-api',
       '#!/bin/bash',
       'set -e',
@@ -101,7 +103,11 @@ export class WebInfraStack extends cdk.Stack {
 
       '# Configuration',
       'APP_DIR="/home/ec2-user/firenze-api"',
+      'DEFAULT_BRANCH=' + (envName === 'prod' ? 'main' : 'dev'),
+      'BRANCH="${1:-$DEFAULT_BRANCH}"',
       'export AWS_REGION=' + this.region,
+
+      'echo "Deploy script called with branch: $BRANCH (default: $DEFAULT_BRANCH)"',
 
       '# Ensure directory exists and permissions are correct',
       'mkdir -p "$APP_DIR"',
@@ -112,6 +118,7 @@ export class WebInfraStack extends cdk.Stack {
       '  export ENVIRONMENT=' + (envName === 'prod' ? 'production' : envName),
       '  export HOME=/home/ec2-user',
       '  export AWS_REGION=' + this.region,
+      '  BRANCH=' + (envName === 'prod' ? '\\${1:-main}' : '\\${1:-dev}'),
 
       '  # Fetch Token (running as ec2-user, leveraging Instance Profile)',
       '  TOKEN=\\$(aws secretsmanager get-secret-value --secret-id github-token --query SecretString --output text --region ' + this.region + ')',
@@ -119,16 +126,18 @@ export class WebInfraStack extends cdk.Stack {
       '  REPO_URL=\\"https://\\${TOKEN}@github.com/firenzeme/web-api.git\\"',
       '  TARGET_DIR=\\"/home/ec2-user/firenze-api\\"',
 
-      '  echo \\"Deploying to \\$TARGET_DIR in environment \\$ENVIRONMENT\\"',
+      '  echo \\"Deploying branch \\$BRANCH to \\$TARGET_DIR in environment \\$ENVIRONMENT\\"',
 
       '  if [ ! -d \\"\\$TARGET_DIR/.git\\" ]; then',
-      '    echo \\"Cloning repository...\\"',
-      '    git clone \\"\\$REPO_URL\\" \\"\\$TARGET_DIR\\"',
+      '    echo \\"Cloning repository (branch: \\$BRANCH)...\\"',
+      '    git clone -b \\"\\$BRANCH\\" \\"\\$REPO_URL\\" \\"\\$TARGET_DIR\\"',
       '  else',
-      '    echo \\"Pulling latest changes...\\"',
+      '    echo \\"Pulling latest changes from \\$BRANCH...\\"',
       '    cd \\"\\$TARGET_DIR\\"',
       '    git remote set-url origin \\"\\$REPO_URL\\"',
-      '    git pull origin main',
+      '    git fetch origin',
+      '    git checkout \\"\\$BRANCH\\"',
+      '    git pull origin \\"\\$BRANCH\\"',
       '  fi',
 
       '  cd \\"\\$TARGET_DIR\\"',
@@ -139,7 +148,7 @@ export class WebInfraStack extends cdk.Stack {
 
       '  # Ensure persistence',
       '  pm2 save',
-      '"',
+      '" "$BRANCH"',
 
       '# Ensure PM2 starts on boot (running as root to register systemd, but for ec2-user)',
       'pm2 startup systemd -u ec2-user --hp /home/ec2-user',
@@ -148,7 +157,7 @@ export class WebInfraStack extends cdk.Stack {
 
       'chmod +x /usr/local/bin/deploy-api',
 
-      // Run it immediately on first boot to bootstrap the app
+      // Run it immediately on first boot to bootstrap the app (uses default branch for environment)
       '/usr/local/bin/deploy-api'
     );
 

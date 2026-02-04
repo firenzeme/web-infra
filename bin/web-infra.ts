@@ -1,20 +1,26 @@
 #!/usr/bin/env node
 import * as cdk from 'aws-cdk-lib/core';
 import { WebInfraStack } from '../lib/web-infra-stack';
+import { CognitoLambdaStack } from '../lib/cognito-lambda-stack';
 
 const app = new cdk.App();
 
 const envName = app.node.tryGetContext('env') || 'prod';
 
+const env = {
+  account: process.env.CDK_DEFAULT_ACCOUNT,
+  region: process.env.CDK_DEFAULT_REGION,
+};
+
+// Environment-specific web infrastructure (EC2, Amplify, ALB, etc.)
 new WebInfraStack(app, `WebInfraStack-${envName}`, {
   envName,
-  /* If you don't specify 'env', this stack will be environment-agnostic.
-   * Account/Region-dependent features and context lookups will not work,
-   * but a single synthesized template can be deployed anywhere. */
+  env,
+});
 
-  /* Uncomment the next line to specialize this stack for the AWS Account
-   * and Region that are implied by the current CLI configuration. */
-  env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION },
-
-  /* For more information, see https://docs.aws.amazon.com/cdk/latest/guide/environments.html */
+// Shared Cognito Lambda functions (environment-agnostic)
+// Deploy once per account, attach to user pools manually or via automation
+new CognitoLambdaStack(app, 'CognitoLambdaStack', {
+  env,
+  description: 'Cognito Lambda triggers for pre-token generation',
 });
