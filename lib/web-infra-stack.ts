@@ -41,7 +41,7 @@ export class WebInfraStack extends cdk.Stack {
     const apiRole = new iam.Role(this, `WebApiRole-${envName}`, {
       assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
       managedPolicies: [
-        iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'),
+        iam.ManagedPolicy.fromManagedPolicyArn(this, `SSMPolicy-${envName}`, 'arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore'),
       ],
     });
 
@@ -169,7 +169,7 @@ export class WebInfraStack extends cdk.Stack {
       role: apiRole,
       securityGroup: apiSecurityGroup,
       vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
-      keyName: 'firenze-api-key',
+      keyPair: ec2.KeyPair.fromKeyPairName(this, `KeyPair-${envName}`, 'firenze-api-key'),
       userData,
     });
 
@@ -180,7 +180,7 @@ export class WebInfraStack extends cdk.Stack {
     });
 
     new ec2.CfnEIPAssociation(this, `WebApiEIPAssoc-${envName}`, {
-      eip: eip.ref,
+      allocationId: eip.attrAllocationId,
       instanceId: apiInstance.instanceId,
     });
 
@@ -249,7 +249,7 @@ export class WebInfraStack extends cdk.Stack {
     const amplifyRole = new iam.Role(this, `AmplifyRole-${envName}`, {
       assumedBy: new iam.ServicePrincipal('amplify.amazonaws.com'),
       managedPolicies: [
-        iam.ManagedPolicy.fromAwsManagedPolicyName('AdministratorAccess-Amplify'),
+        iam.ManagedPolicy.fromManagedPolicyArn(this, `AmplifyPolicy-${envName}`, 'arn:aws:iam::aws:policy/AdministratorAccess-Amplify'),
       ],
     });
 
